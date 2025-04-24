@@ -2,8 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthContext";
 import logoImage from "../assets/Logo.png";
 import { useNavigate } from "react-router-dom";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -25,81 +23,42 @@ export default function SchedulePage() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setSchedule(docSnap.data().schedule);
+          setSchedule(docSnap.data());
         } else {
-          const empty = days.map(() => engineers.map(() => ""));
-          await setDoc(docRef, { schedule: empty });
+          // Create empty object format
+          const empty = {};
+          days.forEach((day) => {
+            empty[day] = {};
+            engineers.forEach((eng) => {
+              empty[day][eng] = "";
+            });
+          });
+          await setDoc(docRef, empty);
           setSchedule(empty);
         }
       } catch (error) {
         console.error("Error fetching schedule:", error);
-        alert("Failed to load schedule. Check permissions or Firebase config.");
+        alert("Error loading schedule.");
       }
     };
 
     fetchSchedule();
   }, []);
 
-  const handleChange = (dayIdx, engIdx, value) => {
-    const newSchedule = [...schedule];
-    newSchedule[dayIdx][engIdx] = value;
-    setSchedule(newSchedule);
+  const handleChange = (day, engineer, value) => {
+    const updated = { ...schedule };
+    updated[day][engineer] = value;
+    setSchedule(updated);
   };
 
   const saveSchedule = async () => {
     try {
-      await setDoc(doc(db, "schedules", "main"), { schedule });
-      alert("Schedule saved to Firestore!");
+      await setDoc(doc(db, "schedules", "main"), schedule);
+      alert("Schedule saved!");
     } catch (error) {
-      console.error("Save failed:", error);
-      alert("Save failed. Please check your connection or role.");
+      console.error("Save error:", error);
+      alert("Failed to save schedule.");
     }
-  };
-
-  const exportToExcel = async () => {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Team Schedule");
-
-    const columns = ["Engineer", ...days];
-    sheet.columns = columns.map(col => ({ header: col, key: col }));
-
-    engineers.forEach((eng, engIdx) => {
-      const row = { Engineer: eng };
-      days.forEach((day, dayIdx) => {
-        row[day] = schedule[dayIdx][engIdx];
-      });
-      sheet.addRow(row);
-    });
-
-    sheet.eachRow((row, rowNumber) => {
-      row.eachCell((cell, colNumber) => {
-        cell.alignment = { vertical: "middle", horizontal: "center" };
-        cell.font = { bold: true };
-
-        if (rowNumber === 1) {
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FF00796B" },
-          };
-          cell.font = { color: { argb: "FFFFFFFF" } };
-        } else if (colNumber > 1) {
-          const value = cell.value;
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: value ? "FFF44336" : "FF66BB6A" },
-          };
-          cell.font = { color: { argb: "FFFFFFFF" } };
-        }
-      });
-    });
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    saveAs(blob, "TeamScheduleStyled.xlsx");
   };
 
   if (!schedule) {
@@ -112,7 +71,6 @@ export default function SchedulePage() {
         <img src={logoImage} alt="Logo" style={{ height: "60px" }} />
         <div>
           <button onClick={() => navigate("/")} style={topButtonStyle}>Home</button>
-          <button onClick={exportToExcel} style={topButtonStyle}>Export to Excel</button>
           {(user?.role === "admin" || user?.role === "manager") && (
             <button onClick={saveSchedule} style={topButtonStyle}>Save Schedule</button>
           )}
@@ -131,21 +89,21 @@ export default function SchedulePage() {
           </tr>
         </thead>
         <tbody>
-          {engineers.map((engineer, engIdx) => (
+          {engineers.map((engineer) => (
             <tr key={engineer}>
               <td style={headerStyle}>{engineer}</td>
-              {days.map((_, dayIdx) => (
-                <td key={dayIdx}>
+              {days.map((day) => (
+                <td key={day}>
                   {["admin", "manager"].includes(user?.role) ? (
                     <input
                       type="text"
-                      value={schedule[dayIdx][engIdx]}
-                      onChange={(e) => handleChange(dayIdx, engIdx, e.target.value)}
+                      value={schedule[day][engineer]}
+                      onChange={(e) => handleChange(day, engineer, e.target.value)}
                       style={{
                         width: "100%",
                         padding: "0.5rem",
                         border: "1px solid #ccc",
-                        backgroundColor: schedule[dayIdx][engIdx] ? "#f44336" : "#66bb6a",
+                        backgroundColor: schedule[day][engineer] ? "#f44336" : "#66bb6a",
                         color: "white",
                         fontWeight: "bold",
                         textAlign: "center",
@@ -156,13 +114,13 @@ export default function SchedulePage() {
                     <span style={{
                       display: "block",
                       padding: "0.5rem",
-                      backgroundColor: schedule[dayIdx][engIdx] ? "#f44336" : "#66bb6a",
+                      backgroundColor: schedule[day][engineer] ? "#f44336" : "#66bb6a",
                       color: "white",
                       fontWeight: "bold",
                       textAlign: "center",
                       borderRadius: "4px",
                     }}>
-                      {schedule[dayIdx][engIdx]}
+                      {schedule[day][engineer]}
                     </span>
                   )}
                 </td>
