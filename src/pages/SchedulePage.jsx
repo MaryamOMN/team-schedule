@@ -18,18 +18,22 @@ export default function SchedulePage() {
   const navigate = useNavigate();
   const [schedule, setSchedule] = useState(null);
 
-  // Load schedule from Firestore
   useEffect(() => {
     const fetchSchedule = async () => {
-      const docRef = doc(db, "schedules", "main");
-      const docSnap = await getDoc(docRef);
+      try {
+        const docRef = doc(db, "schedules", "main");
+        const docSnap = await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        setSchedule(docSnap.data().schedule);
-      } else {
-        const emptySchedule = days.map(() => engineers.map(() => ""));
-        await setDoc(docRef, { schedule: emptySchedule });
-        setSchedule(emptySchedule);
+        if (docSnap.exists()) {
+          setSchedule(docSnap.data().schedule);
+        } else {
+          const empty = days.map(() => engineers.map(() => ""));
+          await setDoc(docRef, { schedule: empty });
+          setSchedule(empty);
+        }
+      } catch (error) {
+        console.error("Error fetching schedule:", error);
+        alert("Failed to load schedule. Check permissions or Firebase config.");
       }
     };
 
@@ -43,9 +47,13 @@ export default function SchedulePage() {
   };
 
   const saveSchedule = async () => {
-    const docRef = doc(db, "schedules", "main");
-    await setDoc(docRef, { schedule });
-    alert("Schedule saved to Firestore!");
+    try {
+      await setDoc(doc(db, "schedules", "main"), { schedule });
+      alert("Schedule saved to Firestore!");
+    } catch (error) {
+      console.error("Save failed:", error);
+      alert("Save failed. Please check your connection or role.");
+    }
   };
 
   const exportToExcel = async () => {
@@ -74,7 +82,7 @@ export default function SchedulePage() {
             pattern: "solid",
             fgColor: { argb: "FF00796B" },
           };
-          cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+          cell.font = { color: { argb: "FFFFFFFF" } };
         } else if (colNumber > 1) {
           const value = cell.value;
           cell.fill = {
@@ -82,17 +90,21 @@ export default function SchedulePage() {
             pattern: "solid",
             fgColor: { argb: value ? "FFF44336" : "FF66BB6A" },
           };
-          cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+          cell.font = { color: { argb: "FFFFFFFF" } };
         }
       });
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
     saveAs(blob, "TeamScheduleStyled.xlsx");
   };
 
-  if (!schedule) return <p style={{ padding: "2rem", fontWeight: "bold" }}>Loading schedule...</p>;
+  if (!schedule) {
+    return <p style={{ padding: "2rem", fontWeight: "bold" }}>Loading schedule...</p>;
+  }
 
   return (
     <div style={{ backgroundColor: "#e0f7fa", minHeight: "100vh", padding: "2rem" }}>
