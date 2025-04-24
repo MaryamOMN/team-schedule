@@ -4,6 +4,8 @@ import logoImage from "../assets/Logo.png";
 import { useNavigate } from "react-router-dom";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const engineers = [
@@ -25,7 +27,6 @@ export default function SchedulePage() {
         if (docSnap.exists()) {
           setSchedule(docSnap.data());
         } else {
-          // Create empty object format
           const empty = {};
           days.forEach((day) => {
             empty[day] = {};
@@ -61,6 +62,52 @@ export default function SchedulePage() {
     }
   };
 
+  const exportToExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Team Schedule");
+
+    const columns = ["Engineer", ...days];
+    sheet.columns = columns.map(col => ({ header: col, key: col }));
+
+    engineers.forEach((eng) => {
+      const row = { Engineer: eng };
+      days.forEach((day) => {
+        row[day] = schedule[day][eng];
+      });
+      sheet.addRow(row);
+    });
+
+    sheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell, colNumber) => {
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        cell.font = { bold: true };
+
+        if (rowNumber === 1) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FF00796B" },
+          };
+          cell.font = { color: { argb: "FFFFFFFF" } };
+        } else if (colNumber > 1) {
+          const value = cell.value;
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: value ? "FFF44336" : "FF66BB6A" },
+          };
+          cell.font = { color: { argb: "FFFFFFFF" } };
+        }
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    saveAs(blob, "TeamScheduleStyled.xlsx");
+  };
+
   if (!schedule) {
     return <p style={{ padding: "2rem", fontWeight: "bold" }}>Loading schedule...</p>;
   }
@@ -71,6 +118,7 @@ export default function SchedulePage() {
         <img src={logoImage} alt="Logo" style={{ height: "60px" }} />
         <div>
           <button onClick={() => navigate("/")} style={topButtonStyle}>Home</button>
+          <button onClick={exportToExcel} style={topButtonStyle}>Export to Excel</button>
           {(user?.role === "admin" || user?.role === "manager") && (
             <button onClick={saveSchedule} style={topButtonStyle}>Save Schedule</button>
           )}
