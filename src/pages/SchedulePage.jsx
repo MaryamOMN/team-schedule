@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthContext";
 import logoImage from "../assets/Logo.png";
+import { useNavigate } from "react-router-dom";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import { useNavigate } from "react-router-dom";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
 
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const engineers = [
@@ -14,14 +16,36 @@ const engineers = [
 export default function SchedulePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [schedule, setSchedule] = useState(() =>
-    days.map(() => engineers.map(() => ""))
-  );
+  const [schedule, setSchedule] = useState(null);
+
+  // Load schedule from Firestore
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      const docRef = doc(db, "schedules", "main");
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        setSchedule(docSnap.data().schedule);
+      } else {
+        const emptySchedule = days.map(() => engineers.map(() => ""));
+        await setDoc(docRef, { schedule: emptySchedule });
+        setSchedule(emptySchedule);
+      }
+    };
+
+    fetchSchedule();
+  }, []);
 
   const handleChange = (dayIdx, engIdx, value) => {
     const newSchedule = [...schedule];
     newSchedule[dayIdx][engIdx] = value;
     setSchedule(newSchedule);
+  };
+
+  const saveSchedule = async () => {
+    const docRef = doc(db, "schedules", "main");
+    await setDoc(docRef, { schedule });
+    alert("Schedule saved to Firestore!");
   };
 
   const exportToExcel = async () => {
@@ -51,17 +75,14 @@ export default function SchedulePage() {
             fgColor: { argb: "FF00796B" },
           };
           cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
-        } else {
-          const dayKey = columns[colNumber - 1];
-          if (colNumber > 1) {
-            const value = sheet.getRow(rowNumber).getCell(dayKey).value;
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: value ? "FFF44336" : "FF66BB6A" },
-            };
-            cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
-          }
+        } else if (colNumber > 1) {
+          const value = cell.value;
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: value ? "FFF44336" : "FF66BB6A" },
+          };
+          cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
         }
       });
     });
@@ -71,19 +92,18 @@ export default function SchedulePage() {
     saveAs(blob, "TeamScheduleStyled.xlsx");
   };
 
+  if (!schedule) return <p style={{ padding: "2rem", fontWeight: "bold" }}>Loading schedule...</p>;
+
   return (
-    <div
-      style={{
-        backgroundColor: "#e0f7fa",
-        minHeight: "100vh",
-        padding: "2rem",
-      }}
-    >
+    <div style={{ backgroundColor: "#e0f7fa", minHeight: "100vh", padding: "2rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <img src={logoImage} alt="Logo" style={{ height: "60px" }} />
         <div>
           <button onClick={() => navigate("/")} style={topButtonStyle}>Home</button>
           <button onClick={exportToExcel} style={topButtonStyle}>Export to Excel</button>
+          {(user?.role === "admin" || user?.role === "manager") && (
+            <button onClick={saveSchedule} style={topButtonStyle}>Save Schedule</button>
+          )}
         </div>
       </div>
 
@@ -104,7 +124,7 @@ export default function SchedulePage() {
               <td style={headerStyle}>{engineer}</td>
               {days.map((_, dayIdx) => (
                 <td key={dayIdx}>
-                  {user.role === "admin" || user.role === "manager" ? (
+                  {["admin", "manager"].includes(user?.role) ? (
                     <input
                       type="text"
                       value={schedule[dayIdx][engIdx]}

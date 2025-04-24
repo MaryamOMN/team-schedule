@@ -1,54 +1,59 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { auth, db } from "../firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const storedUser = localStorage.getItem("loggedInUser");
-    return storedUser ? JSON.parse(storedUser) : null;
-  });
+  const [user, setUser] = useState(null);
 
-  const [users, setUsers] = useState(() => {
-    const storedUsers = localStorage.getItem("users");
-    return storedUsers ? JSON.parse(storedUsers) : [];
-  });
-
-  const login = (email, password) => {
-    const foundUser = users.find(
-      (u) => u.email === email && u.password === password
-    );
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem("loggedInUser", JSON.stringify(foundUser));
-    } else {
-      alert("Invalid email or password");
-    }
-  };
-
-  const signup = (email, password, role) => {
-    const existing = users.find((u) => u.email === email);
-    if (existing) {
-      alert("User already exists");
-      return;
-    }
-    const newUser = { email, password, role };
-    const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-    alert("Account created! You can now log in.");
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("loggedInUser");
-  };
-
+  // Firebase auth state listener
   useEffect(() => {
-    localStorage.setItem("users", JSON.stringify(users));
-  }, [users]);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+        const userData = userDoc.exists() ? userDoc.data() : null;
+        setUser({ uid: firebaseUser.uid, email: firebaseUser.email, ...userData });
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const login = (email, password) =>
+    signInWithEmailAndPassword(auth, email, password).catch((err) =>
+      alert("Login failed: " + err.message)
+    );
+
+  const signup = async (email, password, role = "user") => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Save role to Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        email,
+        role,
+      });
+
+      alert("Account created!");
+    } catch (error) {
+      alert("Signup failed: " + error.message);
+    }
+  };
+
+  const logout = () => signOut(auth);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, signup }}>
+    <AuthContext.Provider value={{ user, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
